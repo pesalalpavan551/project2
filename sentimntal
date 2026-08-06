@@ -1,0 +1,385 @@
+# ===========================================================
+# HOTEL REVIEW SENTIMENT ANALYSIS USING NLP
+# TF-IDF + LOGISTIC REGRESSION (Modified Version)
+# ===========================================================
+
+import pandas as pd
+import numpy as np
+import re
+import nltk
+import matplotlib.pyplot as plt
+import seaborn as sns
+import pickle
+
+from nltk.corpus import stopwords
+from nltk.stem import PorterStemmer
+
+from sklearn.model_selection import train_test_split
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import (
+    accuracy_score,
+    classification_report,
+    confusion_matrix
+)
+
+# -----------------------------------------------------------
+# Download Stopwords
+# -----------------------------------------------------------
+
+nltk.download('stopwords', quiet=True)
+
+# -----------------------------------------------------------
+# Load Dataset
+# -----------------------------------------------------------
+
+try:
+
+    data = pd.read_csv("hotel_reviews.csv")
+    data.columns = data.columns.str.lower()
+
+    if 'review' not in data.columns or 'sentiment' not in data.columns:
+        raise Exception("Columns not found")
+
+except:
+
+    data = pd.DataFrame({
+
+        "review":[
+
+            "The hotel room was clean and comfortable.",
+            "Terrible experience and rude staff.",
+            "Loved the swimming pool and breakfast.",
+            "The room was dirty and smelled bad.",
+            "Excellent customer service.",
+            "Very noisy environment at night.",
+            "Amazing stay with beautiful view.",
+            "Worst hotel I have ever visited.",
+            "Friendly staff and delicious food.",
+            "Bathroom was not clean.",
+            "Wonderful hospitality and neat rooms.",
+            "Poor maintenance and broken furniture.",
+            "Fantastic location near the beach.",
+            "Food quality was terrible.",
+            "Highly recommend this hotel.",
+            "Very disappointing experience."
+
+        ],
+
+        "sentiment":[
+
+            "positive",
+            "negative",
+            "positive",
+            "negative",
+            "positive",
+            "negative",
+            "positive",
+            "negative",
+            "positive",
+            "negative",
+            "positive",
+            "negative",
+            "positive",
+            "negative",
+            "positive",
+            "negative"
+
+        ]
+
+    })
+
+print("="*60)
+print("HOTEL REVIEW DATASET")
+print("="*60)
+
+print(data.head())
+
+print("\nDataset Shape :", data.shape)
+
+# -----------------------------------------------------------
+# Text Cleaning
+# -----------------------------------------------------------
+
+ps = PorterStemmer()
+
+stop_words = set(stopwords.words("english"))
+
+def clean_text(text):
+
+    text = re.sub("[^a-zA-Z]", " ", str(text))
+
+    text = text.lower()
+
+    words = text.split()
+
+    words = [ps.stem(word) for word in words if word not in stop_words]
+
+    return " ".join(words)
+
+data["clean_review"] = data["review"].apply(clean_text)
+
+# -----------------------------------------------------------
+# Encode Labels
+# -----------------------------------------------------------
+
+data["sentiment"] = data["sentiment"].replace({
+
+    "positive":1,
+    "negative":0
+
+})
+
+# -----------------------------------------------------------
+# TF-IDF
+# -----------------------------------------------------------
+
+vectorizer = TfidfVectorizer(
+
+    max_features=4000,
+    ngram_range=(1,2)
+
+)
+
+X = vectorizer.fit_transform(data["clean_review"])
+
+y = data["sentiment"]
+
+# -----------------------------------------------------------
+# Train Test Split
+# -----------------------------------------------------------
+
+X_train,X_test,y_train,y_test = train_test_split(
+
+    X,
+    y,
+    test_size=0.30,
+    random_state=15,
+    stratify=y
+
+)
+
+print("\nTraining Samples :",X_train.shape[0])
+
+print("Testing Samples :",X_test.shape[0])
+
+# -----------------------------------------------------------
+# Logistic Regression
+# -----------------------------------------------------------
+
+model = LogisticRegression(
+
+    max_iter=500,
+    solver="liblinear"
+
+)
+
+model.fit(X_train,y_train)
+
+# -----------------------------------------------------------
+# Prediction
+# -----------------------------------------------------------
+
+y_pred = model.predict(X_test)
+
+# -----------------------------------------------------------
+# Accuracy
+# -----------------------------------------------------------
+
+accuracy = accuracy_score(y_test,y_pred)
+
+print("\nAccuracy : {:.2f}%".format(accuracy*100))
+
+print("\nClassification Report\n")
+
+print(classification_report(y_test,y_pred))
+
+# -----------------------------------------------------------
+# Confusion Matrix
+# -----------------------------------------------------------
+
+cm = confusion_matrix(y_test,y_pred)
+
+print("\nConfusion Matrix\n")
+
+print(cm)
+
+# -----------------------------------------------------------
+# Heatmap
+# -----------------------------------------------------------
+
+plt.figure(figsize=(6,5))
+
+sns.heatmap(
+
+    cm,
+
+    annot=True,
+
+    cmap="Blues",
+
+    fmt="d",
+
+    xticklabels=["Negative","Positive"],
+
+    yticklabels=["Negative","Positive"]
+
+)
+
+plt.title("Confusion Matrix")
+
+plt.xlabel("Predicted")
+
+plt.ylabel("Actual")
+
+plt.show()
+
+# -----------------------------------------------------------
+# Sentiment Distribution
+# -----------------------------------------------------------
+
+plt.figure(figsize=(6,4))
+
+data["sentiment"].value_counts().plot(
+
+    kind="bar"
+
+)
+
+plt.xticks(
+
+    [0,1],
+
+    ["Positive","Negative"],
+
+    rotation=0
+
+)
+
+plt.title("Sentiment Distribution")
+
+plt.ylabel("Count")
+
+plt.show()
+
+# -----------------------------------------------------------
+# Feature Importance
+# -----------------------------------------------------------
+
+feature_names = vectorizer.get_feature_names_out()
+
+coefficients = model.coef_[0]
+
+importance = pd.DataFrame({
+
+    "Word":feature_names,
+
+    "Weight":coefficients
+
+})
+
+top_positive = importance.sort_values(
+
+    by="Weight",
+
+    ascending=False
+
+).head(10)
+
+top_negative = importance.sort_values(
+
+    by="Weight"
+
+).head(10)
+
+print("\nTop Positive Words\n")
+
+print(top_positive)
+
+print("\nTop Negative Words\n")
+
+print(top_negative)
+
+# -----------------------------------------------------------
+# Custom Prediction Function
+# -----------------------------------------------------------
+
+def predict_review(review):
+
+    review = clean_text(review)
+
+    vector = vectorizer.transform([review])
+
+    prediction = model.predict(vector)[0]
+
+    probability = model.predict_proba(vector)[0]
+
+    print("\nReview :",review)
+
+    if prediction==1:
+
+        print("Prediction : Positive")
+
+    else:
+
+        print("Prediction : Negative")
+
+    print("Probability :",probability)
+
+# -----------------------------------------------------------
+# Different Sample Reviews
+# -----------------------------------------------------------
+
+predict_review(
+
+    "The staff were extremely friendly and the rooms were beautiful."
+
+)
+
+predict_review(
+
+    "Dirty room with horrible food and poor service."
+
+)
+
+predict_review(
+
+    "Location was nice but the room was average."
+
+)
+
+predict_review(
+
+    "Excellent facilities and wonderful hospitality."
+
+)
+
+predict_review(
+
+    "The air conditioner was not working and the room smelled awful."
+
+)
+
+# -----------------------------------------------------------
+# Save Model
+# -----------------------------------------------------------
+
+pickle.dump(
+
+    model,
+
+    open("hotel_sentiment_model.pkl","wb")
+
+)
+
+pickle.dump(
+
+    vectorizer,
+
+    open("hotel_vectorizer.pkl","wb")
+
+)
+
+print("\nModel Saved Successfully!")
+
+print("Project Completed.")
